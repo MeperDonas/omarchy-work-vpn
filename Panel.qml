@@ -21,13 +21,35 @@ Panel {
   moduleName: "meperdonas.work-vpn"
   ipcTarget: "meperdonas.work-vpn"
 
-  readonly property string helper: setting("helper", "conectar-trabajo")
+  // El helper es la base de todo comando. Si está vacío se usa el que viaja
+  // dentro del plugin (bin/work-vpn), como hace el resto de los widgets.
+  readonly property string bundledHelper: Quickshell.env("HOME") + "/.config/omarchy/plugins/meperdonas.work-vpn/bin/work-vpn"
+  readonly property string configuredHelper: setting("helper", "")
+  readonly property string helper: configuredHelper !== ""
+    ? configuredHelper
+    : "$( [ -x " + bundledHelper + " ] && printf %s " + bundledHelper + " || printf %s conectar-trabajo )"
+  // Contrato nuevo: `--status --json` y `apps --json`. Los valores por defecto
+  // son los de los helpers viejos, así nada se rompe; el widget prueba json y
+  // si el helper no lo entiende se queda con el texto para el resto de la sesión.
+  readonly property string statusJsonArgs: setting("statusJsonArgs", "--status --json")
+  readonly property string statusTextArgs: setting("statusTextArgs", "--status")
+  readonly property string connectArgs: setting("connectArgs", "--vpn-only")
+  readonly property string disconnectArgs: setting("disconnectArgs", "--down")
+  readonly property string appsArgs: setting("appsArgs", "apps --json")
+  readonly property string appOpenArgs: setting("appOpenArgs", "open")
   readonly property string label: setting("label", "Work connection")
   readonly property int refreshInterval: setting("refreshIntervalSec", 5)
   readonly property bool showRemmina: setting("showRemmina", "On") === "On"
   readonly property bool showTeams: setting("showTeams", "On") === "On"
 
   property bool connected: false
+  // Apps que declara el helper (`apps --json`): id, etiqueta e ícono.
+  property var apps: []
+  property bool appsFromHelper: false
+  // El helper viejo no entiende json: se prueba una vez y se recuerda.
+  property bool jsonStatus: true
+  property string backend: ""
+  property string connection: ""
   property bool busy: false
   property string statusText: "Comprobando…"
   property string ipAddress: "—"
@@ -37,6 +59,7 @@ Panel {
   implicitHeight: bar ? bar.barSize : 26
 
   function refresh() { if (!statusProbe.running) statusProbe.running = true }
+  function refreshApps() { if (!appsProbe.running) appsProbe.running = true }
   function runAction(argument) {
     busy = true
     close()
@@ -46,22 +69,90 @@ Panel {
     refreshTimer.restart()
   }
 
+  function applyTextStatus(output) {
+    // Helper viejo: se lee el texto (contrato original).
+    root.connected = output.indexOf("VPN conectada") !== -1
+    var ipMatch = output.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/)
+    var gatewayMatch = output.match(/via (\d{1,3}(?:\.\d{1,3}){3})/)
+    root.connection = ""
+    root.ipAddress = ipMatch ? ipMatch[0] : "—"
+    root.gateway = gatewayMatch ? gatewayMatch[1] : "—"
+    root.statusText = root.connected ? "Conectada" : "Desconectada"
+  }
+
+  function applyJsonStatus(data) {
+    root.connected = data.connected === true
+    root.connection = data.connection || ""
+    root.ipAddress = data.ip && data.ip !== "" ? data.ip : "—"
+    root.gateway = data.gateway && data.gateway !== "" ? data.gateway : ""
+    root.backend = data.backend || ""
+    root.statusText = data.detail && data.detail !== ""
+      ? data.detail
+      : (root.connected ? "Conectada" : "Desconectada")
+  }
+
   Process {
     id: statusProbe
-    command: ["/bin/bash", "-lc", root.helper + " --status"]
+    // json: la primera pasada usa el contrato nuevo; si el helper no lo
+    // entiende, esta bandera queda en false y se sigue con texto.
+    property bool json: root.jsonStatus
+    command: ["/bin/bash", "-lc", root.helper + " " + (json ? root.statusJsonArgs : root.statusTextArgs)]
     stdout: StdioCollector { id: statusOutput }
     onExited: {
       var output = String(statusOutput.text || "")
-      root.connected = output.indexOf("VPN conectada") !== -1
-      // Ojo con el escapado: dentro de un literal de regex, `\\.` sería una
-      // barra literal + cualquier carácter (nunca coincide con "10.81.x.x").
-      var ipMatch = output.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/)
-      var gatewayMatch = output.match(/via (\d{1,3}(?:\.\d{1,3}){3})/)
-      root.ipAddress = ipMatch ? ipMatch[0] : "—"
-      root.gateway = gatewayMatch ? gatewayMatch[1] : "—"
-      root.statusText = root.connected ? "Connected" : "Disconnected"
+      if (json) {
+        var data = null
+        try {
+          data = JSON.parse(output)
+        } catch (error) {
+          data = null
+        }
+        if (data && typeof data === "object" && data.connected !== undefined) {
+          root.applyJsonStatus(data)
+        } else {
+          root.jsonStatus = false
+          statusProbe.json = false
+          statusProbe.running = true
+          return
+        }
+      } else {
+        root.applyTextStatus(output)
+      }
       root.busy = false
     }
+  }
+
+  // Apps: si el helper las declara, se dibujan ésas; si no, quedan los botones
+  // de siempre (Remmina y Teams).
+  Process {
+    id: appsProbe
+    command: ["/bin/bash", "-lc", root.helper + " " + root.appsArgs]
+    stdout: StdioCollector { id: appsOutput }
+    onExited: {
+      var data = null
+      try {
+        data = JSON.parse(String(appsOutput.text || ""))
+      } catch (error) {
+        data = null
+      }
+      if (data instanceof Array && data.length > 0) {
+        root.apps = data
+        root.appsFromHelper = true
+      } else {
+        root.apps = []
+        root.appsFromHelper = false
+      }
+    }
+  }
+
+  // Cita para el shell: el id viene del json del helper, no se interpola crudo.
+  function shq(value) {
+    return "'" + String(value).replace(/'/g, "'\\''") + "'"
+  }
+
+  function openApp(id) {
+    if (id === "") return
+    bar.run(root.helper + " " + root.appOpenArgs + " " + shq(id))
   }
 
   Timer {
@@ -69,10 +160,16 @@ Panel {
     interval: root.refreshInterval * 1000
     repeat: true
     running: true
-    onTriggered: root.refresh()
+    onTriggered: {
+      root.refresh()
+      root.refreshApps()
+    }
   }
 
-  Component.onCompleted: refresh()
+  Component.onCompleted: {
+    refresh()
+    refreshApps()
+  }
 
   Rectangle {
     id: iconButton
@@ -147,42 +244,109 @@ Panel {
 
       Text {
         anchors.horizontalCenter: parent.horizontalCenter
-        text: root.busy ? "Working…" : root.statusText
+        width: contentColumn.width
+        horizontalAlignment: Text.AlignHCenter
+        text: root.busy ? "Trabajando…" : root.statusText
         color: root.connected ? (bar ? bar.foreground : "white") : (bar ? bar.urgent : "#e5a")
         font.family: bar ? bar.fontFamily : "monospace"
         font.pixelSize: 12
+        elide: Text.ElideRight
       }
 
+      // Qué conexión está resolviendo (el nombre largo no cabe: se recorta).
+      Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: contentColumn.width
+        horizontalAlignment: Text.AlignHCenter
+        visible: root.connection !== ""
+        text: root.connection
+        color: bar ? bar.foreground : "white"
+        opacity: 0.6
+        font.family: bar ? bar.fontFamily : "monospace"
+        font.pixelSize: 10
+        elide: Text.ElideMiddle
+      }
+
+      // IP y gateway en dos columnas con etiqueta chica: entra sin pegarse al
+      // borde (en una sola línea, con los dos valores, no entraba).
       Row {
         anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 24
-        Text {
-          text: "IP Address  " + root.ipAddress
-          color: bar ? bar.foreground : "white"
-          font.family: bar ? bar.fontFamily : "monospace"
-          font.pixelSize: 11
+        spacing: 32
+
+        Column {
+          spacing: 2
+          visible: root.connected
+          Text {
+            text: "IP del túnel"
+            anchors.horizontalCenter: parent.horizontalCenter
+            color: bar ? bar.foreground : "white"
+            opacity: 0.6
+            font.family: bar ? bar.fontFamily : "monospace"
+            font.pixelSize: 9
+          }
+          Text {
+            text: root.ipAddress
+            anchors.horizontalCenter: parent.horizontalCenter
+            color: bar ? bar.foreground : "white"
+            font.family: bar ? bar.fontFamily : "monospace"
+            font.pixelSize: 12
+          }
         }
-        Text {
-          text: "Gateway  " + root.gateway
-          color: bar ? bar.foreground : "white"
-          font.family: bar ? bar.fontFamily : "monospace"
-          font.pixelSize: 11
+
+        Column {
+          spacing: 2
+          visible: root.connected && root.gateway !== "" && root.gateway !== "—"
+          Text {
+            text: "Gateway"
+            anchors.horizontalCenter: parent.horizontalCenter
+            color: bar ? bar.foreground : "white"
+            opacity: 0.6
+            font.family: bar ? bar.fontFamily : "monospace"
+            font.pixelSize: 9
+          }
+          Text {
+            text: root.gateway
+            anchors.horizontalCenter: parent.horizontalCenter
+            color: bar ? bar.foreground : "white"
+            font.family: bar ? bar.fontFamily : "monospace"
+            font.pixelSize: 12
+          }
         }
       }
 
       Row {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 8
-        ActionButton { label: "Connect"; icon: "󰐕"; enabled: !root.connected && !root.busy; onTriggered: root.runAction("--vpn-only") }
-        ActionButton { label: "Disconnect"; icon: "󰜺"; enabled: root.connected && !root.busy; onTriggered: root.runAction("--down") }
+        ActionButton { label: "Conectar"; icon: "󰐕"; enabled: !root.connected && !root.busy; onTriggered: root.runAction(root.connectArgs) }
+        ActionButton { label: "Desconectar"; icon: "󰜺"; enabled: root.connected && !root.busy; onTriggered: root.runAction(root.disconnectArgs) }
       }
 
-      Row {
+      // Un botón por app: las que declara el helper, o las de siempre si el
+      // helper no las declara (Remmina y Teams, con sus ajustes de visibilidad).
+      Grid {
         anchors.horizontalCenter: parent.horizontalCenter
+        columns: 2
         spacing: 8
-        visible: root.showRemmina || root.showTeams
-        ActionButton { label: "Remmina"; icon: "󰆍"; visible: root.showRemmina; enabled: root.connected; onTriggered: root.runAction("--rdp") }
-        ActionButton { label: "Teams"; icon: "󰊻"; visible: root.showTeams; enabled: true; onTriggered: root.runAction("--teams") }
+        visible: root.appsFromHelper || root.showRemmina || root.showTeams
+
+        Repeater {
+          model: root.appsFromHelper
+            ? root.apps
+            : [{ id: "remmina", label: "Remmina", icon: "󰆍", only: "remmina" }, { id: "teams", label: "Teams", icon: "󰊻", only: "teams" }]
+
+          ActionButton {
+            label: modelData.label
+            icon: modelData.icon !== undefined ? modelData.icon : "󰖟"
+            visible: root.appsFromHelper
+              ? true
+              : (modelData.only === "remmina" ? root.showRemmina : root.showTeams)
+            enabled: root.appsFromHelper ? true : (modelData.only === "remmina" ? root.connected : true)
+            onTriggered: {
+              if (root.appsFromHelper) root.openApp(modelData.id)
+              else root.runAction(modelData.only === "remmina" ? "--rdp" : "--teams")
+            }
+          }
+        }
       }
     }
   }

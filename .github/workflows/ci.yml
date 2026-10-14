@@ -30,6 +30,9 @@ jobs:
           jq -e '.barWidget.schema | all(has("key") and has("type") and has("defaultValue"))' manifest.json >/dev/null
           echo "ajustes OK: $(jq -r '[.barWidget.schema[].key] | join(", ")' manifest.json)"
 
+      - name: Helper (fake NetworkManager, fake apps)
+        run: ./test/helper_test.sh
+
       - name: QML lint (when the runner ships qmllint)
         run: |
           if command -v qmllint >/dev/null 2>&1; then

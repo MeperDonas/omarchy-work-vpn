@@ -16,18 +16,56 @@ helper CLI; the widget only reads its status and calls it.
 
 ## It needs a helper
 
-The widget is only the UI. The helper must expose:
+The widget is only the UI. The helper is the command that talks to your VPN and
+opens your apps; the widget runs it and draws the answer. Any helper works, and
+two contracts are supported:
 
-| Argument | Meaning |
+**New (preferred): JSON**
+
+| Command | What it must print |
 |---|---|
-| `--status` | prints the current state (the widget looks for the line `VPN conectada` and the tunnel IP) |
-| `--vpn-only` | connect the VPN |
-| `--down` | disconnect |
-| `--rdp` | open the remote desktop client |
-| `--teams` | open Teams |
+| `<helper> --status --json` | `{"backend":"…","connected":true,"ip":"10.81.0.6","gateway":"10.81.0.1","detail":"…"}` (only `connected` is required; `gateway` can be empty, WireGuard has none) |
+| `<helper> apps --json` | `[{"id":"slack","label":"Slack","icon":"…"}]`, one button per app |
+| `<helper> open <id>` | open that app |
+| `<helper> --vpn-only` / `<helper> --down` | connect / disconnect (configurable) |
 
-By default it calls `conectar-trabajo` from `PATH`; set **Helper command** in the
-widget settings to point anywhere else.
+**Old (still works): text.** `<helper> --status` printing the line `VPN conectada`
+and the tunnel IP, plus `--vpn-only`, `--down`, `--rdp` and `--teams`. If the JSON
+call does not answer, the widget falls back to this for the rest of the session.
+
+## The helper that ships with it
+
+`bin/work-vpn` is included and uses **NetworkManager**, so it covers whatever your
+system already knows: OpenVPN, WireGuard, Fortinet, StrongSwan… It also detects the
+work apps you have installed (`Slack`, `Microsoft Teams`, `Discord`, `Signal`,
+`Remmina`) and gives each one a button.
+
+```bash
+work-vpn list           # VPN connections NetworkManager knows
+work-vpn status --json  # backend, connected, ip, gateway
+work-vpn up | down | toggle
+work-vpn apps --json    # installed work apps, with their icon
+work-vpn open slack     # open one of them
+```
+
+Optional config in `~/.config/work-vpn/config`:
+
+```
+connection=My work VPN      # if unset: the active one, or the first VPN found
+apps=slack,teams,discord    # if unset: every app it detects
+```
+
+It keeps the old flags as aliases (`--status`, `--vpn-only`, `--down`, `--rdp`,
+`--teams`), so switching helpers does not change how the widget calls them.
+
+## Settings
+
+`helper`, `label`, `refreshIntervalSec`, `showRemmina`, `showTeams` (from before)
+plus: `statusJsonArgs`, `statusTextArgs`, `connectArgs`, `disconnectArgs`,
+`appsArgs`, `appOpenArgs`. The defaults are the classic ones, so an existing setup
+keeps working untouched; leave `helper` empty to use the bundled `bin/work-vpn`
+(e.g. point `helper` at `nmcli connection` and `connectArgs` at `up "My VPN"` if you
+prefer talking to NetworkManager yourself).
 
 ## Install
 

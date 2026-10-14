@@ -6,32 +6,45 @@
   "author": "Santiago Villabona (MeperDonas)",
   "license": "MIT",
   "description": "VPN, remote desktop and Teams for the workday, in one bar icon: state, tunnel IP and gateway, and the connect/disconnect/RDP/Teams actions.",
-  "kinds": ["bar-widget"],
+  "kinds": [
+    "bar-widget"
+  ],
   "activation": "on-demand",
   "entryPoints": {
     "barWidget": "Panel.qml"
   },
   "barWidget": {
     "displayName": "Work connection",
-    "description": "Work VPN status (IP, gateway) with connect, disconnect, RDP and Teams actions, driven by a helper CLI.",
+    "description": "VPN state (tunnel IP, gateway) plus connect, disconnect and the work apps you have installed, driven by a helper CLI. Ships with a NetworkManager helper, and works with any other helper you point it to.",
     "category": "System",
-    "aliases": ["work", "vpn", "work connection", "rdp"],
+    "aliases": [
+      "work",
+      "vpn",
+      "work connection",
+      "rdp"
+    ],
     "allowMultiple": false,
     "defaultSection": "right",
     "defaults": {
-      "helper": "conectar-trabajo",
+      "helper": "",
       "label": "Work connection",
       "refreshIntervalSec": 5,
       "showRemmina": "On",
-      "showTeams": "On"
+      "showTeams": "On",
+      "statusJsonArgs": "--status --json",
+      "statusTextArgs": "--status",
+      "connectArgs": "--vpn-only",
+      "disconnectArgs": "--down",
+      "appsArgs": "apps --json",
+      "appOpenArgs": "open"
     },
     "schema": [
       {
         "key": "helper",
         "type": "string",
         "label": "Helper command",
-        "defaultValue": "conectar-trabajo",
-        "description": "CLI that exposes --status / --vpn-only / --down / --rdp / --teams, on PATH or as a full path."
+        "defaultValue": "",
+        "description": "CLI that answers the status/apps/connect/disconnect calls. Empty uses the helper bundled with the plugin (bin/work-vpn, NetworkManager)."
       },
       {
         "key": "label",
@@ -52,15 +65,63 @@
         "key": "showRemmina",
         "type": "enum",
         "label": "Show the remote desktop button",
-        "options": ["On", "Off"],
+        "options": [
+          "On",
+          "Off"
+        ],
         "defaultValue": "On"
       },
       {
         "key": "showTeams",
         "type": "enum",
         "label": "Show the Teams button",
-        "options": ["On", "Off"],
+        "options": [
+          "On",
+          "Off"
+        ],
         "defaultValue": "On"
+      },
+      {
+        "key": "statusJsonArgs",
+        "type": "string",
+        "label": "Status (JSON) arguments",
+        "defaultValue": "--status --json",
+        "description": "Tried first; if the helper does not answer JSON, the widget falls back to the text arguments for the session."
+      },
+      {
+        "key": "statusTextArgs",
+        "type": "string",
+        "label": "Status (text) arguments",
+        "defaultValue": "--status",
+        "description": "Used when the helper does not understand the JSON call. The widget reads the line \"VPN conectada\" and the first IP."
+      },
+      {
+        "key": "connectArgs",
+        "type": "string",
+        "label": "Connect arguments",
+        "defaultValue": "--vpn-only",
+        "description": "Arguments appended to the helper to connect."
+      },
+      {
+        "key": "disconnectArgs",
+        "type": "string",
+        "label": "Disconnect arguments",
+        "defaultValue": "--down",
+        "description": "Arguments appended to the helper to disconnect."
+      },
+      {
+        "key": "appsArgs",
+        "type": "string",
+        "label": "Apps arguments",
+        "defaultValue": "apps --json",
+        "description": "The helper answers a JSON list of {id,label,icon}; the widget draws one button per app. If it fails, the Remmina and Teams buttons are used."
+      },
+      {
+        "key": "appOpenArgs",
+        "type": "string",
+        "label": "Open-app arguments",
+        "defaultValue": "open",
+        "description": "Prefix used to open one app: the widget runs <helper> <open-app arguments> <id>."
       }
     ]
   }
