@@ -39,6 +39,15 @@ omarchy plugin list          # meperdonas.work-vpn · third-party bar-widget
 Settings (Omarchy settings UI, or inline keys in `~/.config/omarchy/shell.json`):
 `helper`, `label`, `refreshIntervalSec`, `showRemmina`, `showTeams`.
 
+## Remove
+
+```bash
+omarchy plugin remove meperdonas.work-vpn
+```
+
+That removes the plugin from the bar; its settings live in `~/.config/omarchy/shell.json`
+(and the helper, its config and its credentials are yours and stay where they are).
+
 ## Keep it private
 
 This widget is written for one company's setup. If you publish a copy, **remove
