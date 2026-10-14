@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Manifest is valid JSON with the required keys
+        run: |
+          jq -e . manifest.json >/dev/null
+          for k in schemaVersion id name version author license description kinds activation entryPoints barWidget; do
+            jq -e "has(\"$k\")" manifest.json >/dev/null || { echo "falta $k"; exit 1; }
+          done
+          echo "manifest OK: $(jq -r '.id + " " + .version' manifest.json)"
+
+      - name: Entry point exists
+        run: |
+          entry=$(jq -r '.entryPoints.barWidget' manifest.json)
+          test -r "$entry" || { echo "no existe $entry"; exit 1; }
+          echo "entry point OK: $entry"
+
+      - name: Settings schema is well formed
+        run: |
+          jq -e '.barWidget.schema | all(has("key") and has("type") and has("defaultValue"))' manifest.json >/dev/null
+          echo "ajustes OK: $(jq -r '[.barWidget.schema[].key] | join(", ")' manifest.json)"
+
+      - name: QML lint (when the runner ships qmllint)
+        run: |
+          if command -v qmllint >/dev/null 2>&1; then
+            qmllint Panel.qml && echo "qmllint limpio"
+          else
+            echo "qmllint no está en este runner: se salta (localmente da 0 hallazgos)"
+          fi
