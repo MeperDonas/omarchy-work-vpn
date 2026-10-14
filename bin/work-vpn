@@ -249,7 +249,7 @@ case $cmd in
         notify "VPN conectada" "${name}"
         printf 'VPN conectada (%s)\n' "$name"
         ;;
-    down | disconnect)
+    down | disconnect | --down)
         name=$(resolve_connection) || die "No encontré ninguna conexión VPN"
         nm connection down "$name" >/dev/null 2>&1 || die "No pude bajar '$name'"
         notify "VPN desconectada" "$name"
