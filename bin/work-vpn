@@ -61,7 +61,7 @@ declare -A MSG_EN=(
     [app-missing]="'%s' is not installed"
     [app-failed]="I could not open '%s'"
     [app-which]='Tell me which app: work-vpn open <id>'
-    [no-jq]='jq is missing (pacman -S jq)'
+    [no-jq]='jq is missing: the helper needs it to answer the status as JSON'
     [unknown-cmd]="I don't know '%s' (try: work-vpn --help)"
 )
 declare -A MSG_ES=(
@@ -86,7 +86,7 @@ declare -A MSG_ES=(
     [app-missing]="No tenés '%s' instalado"
     [app-failed]="No pude abrir '%s'"
     [app-which]='Decime qué app: work-vpn open <id>'
-    [no-jq]='Falta jq (pacman -S jq)'
+    [no-jq]='Falta jq: el helper lo usa para responder el estado en json'
     [unknown-cmd]="No conozco '%s' (probá: work-vpn --help)"
 )
 
