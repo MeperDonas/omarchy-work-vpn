@@ -28,10 +28,12 @@ two contracts are supported:
 | `<helper> apps --json` | `[{"id":"slack","label":"Slack","icon":"…"}]`, one button per app |
 | `<helper> open <id>` | open that app |
 | `<helper> --vpn-only` / `<helper> --down` | connect / disconnect (configurable) |
+| `<helper> lang` / `<helper> lang en\|es` | optional: print or set the widget language (see *Language* below; without it the widget stays English) |
 
-**Old (still works): text.** `<helper> --status` printing the line `VPN conectada`
-and the tunnel IP, plus `--vpn-only`, `--down`, `--rdp` and `--teams`. If the JSON
-call does not answer, the widget falls back to this for the rest of the session.
+**Old (still works): text.** `<helper> --status` printing the line `VPN connected`
+(or the old Spanish `VPN conectada`) and the tunnel IP, plus `--vpn-only`, `--down`,
+`--rdp` and `--teams`. If the JSON call does not answer, the widget falls back to
+this for the rest of the session.
 
 ## The helper that ships with it
 
@@ -46,6 +48,7 @@ work-vpn status --json  # backend, connected, ip, gateway
 work-vpn up | down | toggle
 work-vpn apps --json    # installed work apps, with their icon
 work-vpn open slack     # open one of them
+work-vpn lang [en|es]   # widget language (without an argument it prints it)
 ```
 
 Optional config in `~/.config/work-vpn/config`:
@@ -57,6 +60,26 @@ apps=slack,teams,discord    # if unset: every app it detects
 
 It keeps the old flags as aliases (`--status`, `--vpn-only`, `--down`, `--rdp`,
 `--teams`), so switching helpers does not change how the widget calls them.
+
+## Language
+
+The widget speaks English and Spanish. English is the default — and the language
+of everything published here (manifest, this README, the catalog previews) — while
+Spanish is meant for day to day use.
+
+The language lives in one line of `~/.config/work-vpn/lang` (`en` or `es`; missing
+file means `en`). The button in the panel header switches it, and the bundled
+helper does the same from the terminal:
+
+```bash
+work-vpn lang       # en
+work-vpn lang es    # now the widget, its status line and its app labels are Spanish
+```
+
+The helper too: its status line and the labels of `work-vpn apps --json` follow the
+same file, so the popup and the terminal never disagree. A different helper only
+has to answer `lang` for the button to work; if it does not, the widget stays in
+English.
 
 ## Settings
 

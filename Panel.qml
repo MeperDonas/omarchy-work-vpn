@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.Ui
+import "i18n.js" as I18n
 
 // Work connection — un icono en la barra para la VPN del trabajo: estado, IP del
 // túnel y gateway, con los botones de conectar, desconectar, escritorio remoto y
@@ -13,6 +14,10 @@ import qs.Ui
 //   --down     desconectar
 //   --rdp      abrir el cliente de escritorio remoto
 //   --teams    abrir Teams
+//   lang [en|es] idioma del widget (~/.config/work-vpn/lang; por defecto en)
+//
+// El idioma del panel y del helper es el mismo archivo, y se cambia con el
+// botoncito del encabezado del popup.
 //
 // Nada de la empresa está acá: el perfil, el host y las credenciales viven en el
 // helper y en el almacén de credenciales del sistema.
@@ -41,6 +46,10 @@ Panel {
   readonly property int refreshInterval: setting("refreshIntervalSec", 5)
   readonly property bool showRemmina: setting("showRemmina", "On") === "On"
   readonly property bool showTeams: setting("showTeams", "On") === "On"
+  // Idioma del widget (en | es). Vive en ~/.config/work-vpn/lang, el mismo
+  // archivo que usa el helper, así la UI y la terminal nunca se contradicen:
+  // se cambia con el botoncito del popup o con `work-vpn lang es`.
+  property string lang: "en"
 
   property bool connected: false
   // Apps que declara el helper (`apps --json`): id, etiqueta e ícono.
@@ -51,12 +60,24 @@ Panel {
   property string backend: ""
   property string connection: ""
   property bool busy: false
-  property string statusText: "Comprobando…"
+  property string statusText: t("checking")
   property string ipAddress: "—"
   property string gateway: "—"
 
   implicitWidth: 30
   implicitHeight: bar ? bar.barSize : 26
+
+  // Traducción: t("clave") o t("clave", { n: 7 })
+  function t(key, subs) { return I18n.t(root.lang, key, subs) }
+
+  // El idioma lo escribe el helper (`work-vpn lang en|es`); acá se refleja ya
+  // mismo y se refresca el estado, que viene con su propio idioma.
+  function toggleLang() {
+    var next = root.lang === "en" ? "es" : "en"
+    bar.run(root.helper + " lang " + next)
+    root.lang = next
+    refresh()
+  }
 
   function refresh() { if (!statusProbe.running) statusProbe.running = true }
   function refreshApps() { if (!appsProbe.running) appsProbe.running = true }
@@ -70,14 +91,15 @@ Panel {
   }
 
   function applyTextStatus(output) {
-    // Helper viejo: se lee el texto (contrato original).
-    root.connected = output.indexOf("VPN conectada") !== -1
+    // Helper viejo: se lee el texto (contrato original). El marcador puede venir
+    // en inglés (helper nuevo) o en español (helper de siempre): los dos valen.
+    root.connected = output.indexOf("VPN conectada") !== -1 || output.indexOf("VPN connected") !== -1
     var ipMatch = output.match(/\b\d{1,3}(?:\.\d{1,3}){3}\b/)
     var gatewayMatch = output.match(/via (\d{1,3}(?:\.\d{1,3}){3})/)
     root.connection = ""
     root.ipAddress = ipMatch ? ipMatch[0] : "—"
     root.gateway = gatewayMatch ? gatewayMatch[1] : "—"
-    root.statusText = root.connected ? "Conectada" : "Desconectada"
+    root.statusText = t(root.connected ? "connected" : "disconnected")
   }
 
   function applyJsonStatus(data) {
@@ -88,7 +110,7 @@ Panel {
     root.backend = data.backend || ""
     root.statusText = data.detail && data.detail !== ""
       ? data.detail
-      : (root.connected ? "Conectada" : "Desconectada")
+      : t(root.connected ? "connected" : "disconnected")
   }
 
   Process {
@@ -145,6 +167,18 @@ Panel {
     }
   }
 
+  // Idioma: se le pregunta al helper al arrancar (el archivo de lang manda). Si
+  // no contesta —helper viejo— queda el inglés, que es el idioma de publicación.
+  Process {
+    id: langProbe
+    command: ["/bin/bash", "-lc", root.helper + " lang"]
+    stdout: StdioCollector { id: langOutput }
+    onExited: {
+      var value = String(langOutput.text || "").trim()
+      root.lang = value === "es" ? "es" : "en"
+    }
+  }
+
   // Cita para el shell: el id viene del json del helper, no se interpola crudo.
   function shq(value) {
     return "'" + String(value).replace(/'/g, "'\\''") + "'"
@@ -167,6 +201,7 @@ Panel {
   }
 
   Component.onCompleted: {
+    langProbe.running = true
     refresh()
     refreshApps()
   }
@@ -223,22 +258,38 @@ Panel {
       anchors.margins: 16
       spacing: 14
 
-      Row {
-        anchors.horizontalCenter: parent.horizontalCenter
-        spacing: 10
-        Text {
-          text: "󰖂"
-          color: root.connected ? (bar ? bar.foreground : "white") : Qt.darker(bar ? bar.foreground : "white", 1.65)
-          font.family: bar ? bar.fontFamily : "monospace"
-          font.pixelSize: 19
+      // Encabezado: ícono y nombre centrados y, a la derecha, el botón de idioma
+      // (alterna en/es; no es un dropdown).
+      Item {
+        width: contentColumn.width
+        height: headerRow.implicitHeight > 0 ? headerRow.implicitHeight : 26
+
+        Row {
+          id: headerRow
+          anchors.horizontalCenter: parent.horizontalCenter
+          spacing: 10
+          Text {
+            text: "󰖂"
+            color: root.connected ? (bar ? bar.foreground : "white") : Qt.darker(bar ? bar.foreground : "white", 1.65)
+            font.family: bar ? bar.fontFamily : "monospace"
+            font.pixelSize: 19
+          }
+          Text {
+            text: root.label
+            color: bar ? bar.foreground : "white"
+            font.family: bar ? bar.fontFamily : "monospace"
+            font.pixelSize: 15
+            font.bold: true
+            anchors.verticalCenter: parent.verticalCenter
+          }
         }
-        Text {
-          text: root.label
-          color: bar ? bar.foreground : "white"
-          font.family: bar ? bar.fontFamily : "monospace"
-          font.pixelSize: 15
-          font.bold: true
+
+        ActionButton {
+          compact: true
+          anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
+          icon: root.lang.toUpperCase()
+          onTriggered: root.toggleLang()
         }
       }
 
@@ -246,7 +297,7 @@ Panel {
         anchors.horizontalCenter: parent.horizontalCenter
         width: contentColumn.width
         horizontalAlignment: Text.AlignHCenter
-        text: root.busy ? "Trabajando…" : root.statusText
+        text: root.busy ? root.t("working") : root.statusText
         color: root.connected ? (bar ? bar.foreground : "white") : (bar ? bar.urgent : "#e5a")
         font.family: bar ? bar.fontFamily : "monospace"
         font.pixelSize: 12
@@ -277,7 +328,7 @@ Panel {
           spacing: 2
           visible: root.connected
           Text {
-            text: "IP del túnel"
+            text: root.t("tunnelIp")
             anchors.horizontalCenter: parent.horizontalCenter
             color: bar ? bar.foreground : "white"
             opacity: 0.6
@@ -297,7 +348,7 @@ Panel {
           spacing: 2
           visible: root.connected && root.gateway !== "" && root.gateway !== "—"
           Text {
-            text: "Gateway"
+            text: root.t("gateway")
             anchors.horizontalCenter: parent.horizontalCenter
             color: bar ? bar.foreground : "white"
             opacity: 0.6
@@ -317,8 +368,8 @@ Panel {
       Row {
         anchors.horizontalCenter: parent.horizontalCenter
         spacing: 8
-        ActionButton { label: "Conectar"; icon: "󰐕"; enabled: !root.connected && !root.busy; onTriggered: root.runAction(root.connectArgs) }
-        ActionButton { label: "Desconectar"; icon: "󰜺"; enabled: root.connected && !root.busy; onTriggered: root.runAction(root.disconnectArgs) }
+        ActionButton { label: root.t("connect"); icon: "󰐕"; enabled: !root.connected && !root.busy; onTriggered: root.runAction(root.connectArgs) }
+        ActionButton { label: root.t("disconnect"); icon: "󰜺"; enabled: root.connected && !root.busy; onTriggered: root.runAction(root.disconnectArgs) }
       }
 
       // Un botón por app: las que declara el helper, o las de siempre si el
@@ -332,7 +383,7 @@ Panel {
         Repeater {
           model: root.appsFromHelper
             ? root.apps
-            : [{ id: "remmina", label: "Remmina", icon: "󰆍", only: "remmina" }, { id: "teams", label: "Teams", icon: "󰊻", only: "teams" }]
+            : [{ id: "remmina", label: root.t("remmina"), icon: "󰆍", only: "remmina" }, { id: "teams", label: root.t("teams"), icon: "󰊻", only: "teams" }]
 
           ActionButton {
             label: modelData.label
@@ -356,9 +407,10 @@ Panel {
     property string label
     property string icon: ""
     property bool enabled: true
+    property bool compact: false
     signal triggered()
-    width: 116
-    height: 54
+    width: compact ? 26 : 116
+    height: compact ? 22 : 54
     radius: 2
     color: enabled ? (buttonMouse.containsMouse ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.10)) : Qt.rgba(1, 1, 1, 0.04)
     border.color: enabled ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(1, 1, 1, 0.10)
@@ -369,14 +421,15 @@ Panel {
       anchors.centerIn: parent
       spacing: 2
       Text {
-        width: buttonRoot.width - 12
+        width: buttonRoot.compact ? buttonRoot.width : buttonRoot.width - 12
         horizontalAlignment: Text.AlignHCenter
         text: buttonRoot.icon
         color: bar ? bar.foreground : "white"
         font.family: bar ? bar.fontFamily : "monospace"
-        font.pixelSize: 17
+        font.pixelSize: buttonRoot.compact ? 13 : 17
       }
       Text {
+        visible: !buttonRoot.compact
         width: buttonRoot.width - 12
         horizontalAlignment: Text.AlignHCenter
         text: buttonRoot.label

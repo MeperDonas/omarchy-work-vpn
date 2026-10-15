@@ -33,6 +33,9 @@ jobs:
       - name: Helper (fake NetworkManager, fake apps)
         run: ./test/helper_test.sh
 
+      - name: i18n (English and Spanish, no untranslated strings)
+        run: ./test/i18n_test.sh
+
       - name: QML lint (when the runner ships qmllint)
         run: |
           if command -v qmllint >/dev/null 2>&1; then

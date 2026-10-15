@@ -44,7 +44,7 @@ printf '#!/bin/sh\n: > %s/remmina-opened\n' "$tmp" >"$fakebin/remmina"
 chmod +x "$fakebin/teams-for-linux" "$fakebin/remmina"
 
 # PATH del helper: los fakes primero y las herramientas justas.
-for tool in bash sh jq awk sed cut head grep basename cat ls env setsid nohup sort uniq tr; do
+for tool in bash sh jq awk sed cut head grep basename cat ls env setsid nohup sort uniq tr mkdir; do
     real=$(command -v "$tool" 2>/dev/null) || continue
     ln -sf "$real" "$fakebin/$tool"
 done
@@ -63,13 +63,13 @@ printf 'work-vpn (helper del widget)\n'
 
 [[ $(run status --json | jq -r .backend) == "nmcli" ]] && ok "el estado sale en json" || bad "el estado sale en json"
 [[ $(run status --json | jq -r .connected) == "false" ]] && ok "sin VPN activa dice desconectado" || bad "dice desconectado"
-run status | grep -q "VPN desconectada" && ok "y también en texto (compatibilidad)" || bad "y también en texto"
+run status | grep -q "VPN disconnected" && ok "y también en texto (compatibilidad)" || bad "y también en texto"
 
 run up >/dev/null
 [[ $(run status --json | jq -r .connected) == "true" ]] && ok "up conecta (y el estado lo refleja)" || bad "up conecta"
 [[ $(run status --json | jq -r .ip) == "10.81.0.6" ]] && ok "lee la IP del túnel" || bad "lee la IP del túnel"
 [[ $(run status --json | jq -r .gateway) == "10.81.0.1" ]] && ok "lee el gateway" || bad "lee el gateway"
-[[ $(run status | head -1) == "VPN conectada (VPN uno)" ]] && ok "el texto también cambia" || bad "el texto cambia"
+[[ $(run status | head -1) == "VPN connected (VPN uno)" ]] && ok "el texto también cambia" || bad "el texto cambia"
 
 run down >/dev/null
 [[ $(run status --json | jq -r .connected) == "false" ]] && ok "down desconecta" || bad "down desconecta"
@@ -90,6 +90,25 @@ printf '%s\n' "$apps" | grep -qx teams && printf '%s\n' "$apps" | grep -qx remmi
 printf 'apps=remmina\n' >"$XDG_CONFIG_HOME/work-vpn/config"
 [[ $(run apps | tr '\n' ',') == "remmina," ]] && ok "la config filtra las apps" || bad "la config filtra las apps"
 printf 'connection=VPN uno\n' >>"$XDG_CONFIG_HOME/work-vpn/config"
+
+# Idioma: inglés por defecto (es el idioma de publicación) y cambiable desde el
+# helper, que es lo mismo que hace el botoncito del encabezado del widget.
+[[ $(run status --json | jq -r .detail) == "Disconnected" ]] && ok "el detalle del estado sale en inglés" || bad "el detalle del estado en inglés"
+[[ $(run lang) == "en" ]] && ok "sin archivo de idioma, inglés" || bad "el idioma por defecto"
+[[ $(run apps --json | jq -r '.[0].label') == "Remote desktop" ]] && ok "y las apps también" || bad "las apps en inglés"
+run lang es >/dev/null
+[[ $(run lang) == "es" ]] && ok "lang es lo cambia" || bad "lang es lo cambia"
+[[ $(cat "$XDG_CONFIG_HOME/work-vpn/lang") == "es" ]] && ok "y lo deja escrito en ~/.config/work-vpn/lang" || bad "el archivo de idioma"
+[[ $(run status | head -1) == "VPN desconectada" ]] && ok "el texto del estado sale en español" || bad "el texto del estado en español"
+[[ $(run status --json | jq -r .detail) == "Desconectada" ]] && ok "el json también" || bad "el json en español"
+[[ $(run apps --json | jq -r '.[0].label') == "Escritorio remoto" ]] && ok "y las etiquetas de las apps" || bad "las etiquetas de las apps"
+run up >/dev/null
+[[ $(run status | head -1) == "VPN conectada (VPN uno)" ]] && ok "conectada, en español" || bad "conectada en español"
+run down >/dev/null
+run lang en >/dev/null
+[[ $(run status | head -1) == "VPN disconnected" ]] && ok "lang en vuelve al inglés" || bad "lang en vuelve al inglés"
+[[ $(run apps --json | jq -r '.[0].label') == "Remote desktop" ]] && ok "las apps también vuelven" || bad "las apps vuelven"
+run lang fr >/dev/null 2>&1 && bad "un idioma que no existe falla" || ok "un idioma que no existe falla"
 
 # el lanzamiento es en segundo plano a propósito: se espera un momento
 wait_for() { # wait_for <archivo>

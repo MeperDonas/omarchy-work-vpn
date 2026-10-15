@@ -10,6 +10,7 @@
 #   work-vpn list              conexiones VPN que conoce NetworkManager
 #   work-vpn apps [--json]     apps de trabajo instaladas (para los botones)
 #   work-vpn open <id>         abre una de esas apps
+#   work-vpn lang [en|es]      idioma del widget (sin argumento, lo muestra)
 #
 # Alias viejos, para no romper a nadie: --status, --vpn-only, --down, --rdp,
 # --teams.
@@ -22,12 +23,79 @@ set -euo pipefail
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/work-vpn"
 CONFIG_FILE="$CONFIG_DIR/config"
+LANG_FILE="$CONFIG_DIR/lang"
 
 die() {
     printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2
     exit 1
 }
 have() { command -v "$1" >/dev/null 2>&1; }
+
+# --- idioma ------------------------------------------------------------------
+# El idioma del widget y del helper (en | es) vive en ~/.config/work-vpn/lang:
+# una línea, la misma que lee el panel. Sin archivo, inglés, que es el idioma en
+# el que se publica el plugin; el botoncito del encabezado del popup escribe
+# este archivo, y esto es lo mismo desde la terminal.
+LANG_CODE=$(cat "$LANG_FILE" 2>/dev/null || true)
+[[ $LANG_CODE == es ]] || LANG_CODE=en
+
+declare -A MSG_EN=(
+    [connected]='Connected'
+    [disconnected]='Disconnected'
+    [no-connections]='No VPN connections in NetworkManager'
+    [vpn-on]='VPN connected'
+    [vpn-off]='VPN disconnected'
+    [vpn-up]='VPN connected (%s)'
+    [vpn-down]='VPN disconnected (%s)'
+    [app-teams]='Microsoft Teams'
+    [app-slack]='Slack'
+    [app-discord]='Discord'
+    [app-signal]='Signal'
+    [app-remmina]='Remote desktop'
+    [lang-set]='Widget language: %s'
+    [lang-usage]="lang: use 'en' or 'es'"
+    [no-vpn]='I found no VPN connection'
+    [no-vpn-nm]="I found no VPN connection in NetworkManager (try 'work-vpn list')"
+    [up-failed]="I could not bring up '%s'"
+    [down-failed]="I could not bring down '%s'"
+    [app-missing]="'%s' is not installed"
+    [app-failed]="I could not open '%s'"
+    [app-which]='Tell me which app: work-vpn open <id>'
+    [no-jq]='jq is missing (pacman -S jq)'
+    [unknown-cmd]="I don't know '%s' (try: work-vpn --help)"
+)
+declare -A MSG_ES=(
+    [connected]='Conectada'
+    [disconnected]='Desconectada'
+    [no-connections]='Sin conexiones VPN en NetworkManager'
+    [vpn-on]='VPN conectada'
+    [vpn-off]='VPN desconectada'
+    [vpn-up]='VPN conectada (%s)'
+    [vpn-down]='VPN desconectada (%s)'
+    [app-teams]='Microsoft Teams'
+    [app-slack]='Slack'
+    [app-discord]='Discord'
+    [app-signal]='Signal'
+    [app-remmina]='Escritorio remoto'
+    [lang-set]='Idioma del widget: %s'
+    [lang-usage]="lang: usá 'en' o 'es'"
+    [no-vpn]='No encontré ninguna conexión VPN'
+    [no-vpn-nm]="No encontré ninguna conexión VPN en NetworkManager (mirá 'work-vpn list')"
+    [up-failed]="No pude levantar '%s'"
+    [down-failed]="No pude bajar '%s'"
+    [app-missing]="No tenés '%s' instalado"
+    [app-failed]="No pude abrir '%s'"
+    [app-which]='Decime qué app: work-vpn open <id>'
+    [no-jq]='Falta jq (pacman -S jq)'
+    [unknown-cmd]="No conozco '%s' (probá: work-vpn --help)"
+)
+
+msg() { # msg <clave> [argumentos de printf] — texto de la interfaz, y con salto
+    local key=$1
+    shift
+    local -n table="MSG_${LANG_CODE^^}"
+    printf "${table[$key]:-$key}\n" "$@"
+}
 
 # --- configuración -----------------------------------------------------------
 CONNECTION="${WORK_VPN_CONNECTION:-}"
@@ -93,14 +161,18 @@ notify() {
 
 # --- apps de trabajo ---------------------------------------------------------
 # Se detectan por binario o por .desktop; el orden manda en el popup.
-# id:etiqueta:binario:archivo .desktop:icono
+# id:clave de la etiqueta:binario:archivo .desktop:icono
 KNOWN_APPS=(
-    "teams:Microsoft Teams:teams-for-linux:teams-for-linux.desktop:󰊻"
-    "slack:Slack:slack:slack.desktop:󰒱"
-    "discord:Discord:discord:discord.desktop:󰙯"
-    "signal:Signal:signal-desktop:signal.desktop:󰭹"
-    "remmina:Escritorio remoto:remmina:org.remmina.Remmina.desktop:󰆍"
+    "teams:app-teams:teams-for-linux:teams-for-linux.desktop:󰊻"
+    "slack:app-slack:slack:slack.desktop:󰒱"
+    "discord:app-discord:discord:discord.desktop:󰙯"
+    "signal:app-signal:signal-desktop:signal.desktop:󰭹"
+    "remmina:app-remmina:remmina:org.remmina.Remmina.desktop:󰆍"
 )
+
+app_label() { # app_label <id> — la etiqueta se traduce como todo lo demás
+    msg "$(app_field "$1" 2)"
+}
 
 app_field() { # app_field <id> <n>
     local entry
@@ -175,14 +247,14 @@ app_ids() {
 
 app_open() { # app_open <id>
     local id=$1 bin desktop
-    app_available "$id" || die "No tenés '$id' instalado"
+    app_available "$id" || die "$(msg app-missing "$id")"
     bin=$(app_field "$id" 3)
     desktop=$(app_field "$id" 4)
-    app_launch "$id" || die "No pude abrir '$id'"
+    app_launch "$id" || die "$(msg app-failed "$id")"
 }
 
 # --- salida ------------------------------------------------------------------
-need_jq() { have jq || die "Falta jq (pacman -S jq)"; }
+need_jq() { have jq || die "$(msg no-jq)"; }
 
 print_status_json() {
     need_jq
@@ -192,12 +264,12 @@ print_status_json() {
             connected="true"
             ip=$(tunnel_ip "$name" || true)
             gw=$(tunnel_gateway "$name" || true)
-            detail="Conectada"
+            detail=$(msg connected)
         else
-            detail="Desconectada"
+            detail=$(msg disconnected)
         fi
     else
-        detail="Sin conexiones VPN en NetworkManager"
+        detail=$(msg no-connections)
     fi
     jq -nc --arg backend "nmcli" --argjson connected "$connected" \
         --arg name "${name:-}" --arg ip "$ip" --arg gateway "$gw" --arg detail "$detail" \
@@ -208,14 +280,14 @@ print_status_text() {
     local name
     if name=$(resolve_connection) && [[ -n $name ]] &&
         nm -t -f NAME connection show --active 2>/dev/null | grep -Fxq "$name"; then
-        printf 'VPN conectada (%s)\n' "$name"
+        msg vpn-up "$name"
         local ip gw
         ip=$(tunnel_ip "$name" || true)
         gw=$(tunnel_gateway "$name" || true)
         [[ -n $ip ]] && printf 'IP %s\n' "$ip"
         [[ -n $gw ]] && printf 'via %s\n' "$gw"
     else
-        printf 'VPN desconectada\n'
+        msg vpn-off
     fi
 }
 
@@ -224,7 +296,7 @@ print_apps_json() {
     local id label icon args
     {
         for id in $(app_ids); do
-            label=$(app_field "$id" 2)
+            label=$(app_label "$id")
             icon=$(app_field "$id" 5)
             jq -nc --arg id "$id" --arg label "$label" --arg icon "$icon" \
                 '{id: $id, label: $label, icon: $icon}'
@@ -233,7 +305,23 @@ print_apps_json() {
 }
 
 usage() {
-    sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+# work-vpn lang [en|es] — idioma del widget y del helper. El archivo lo comparte
+# el panel (que lo lee al arrancar y lo escribe desde su botoncito), así que esto
+# es exactamente lo mismo desde la terminal.
+lang_cmd() {
+    local want="${1:-}"
+    case $want in
+        "") printf '%s\n' "$LANG_CODE" ;;
+        en | es)
+            mkdir -p "$CONFIG_DIR"
+            printf '%s\n' "$want" >"$LANG_FILE"
+            msg lang-set "$want"
+            ;;
+        *) die "$(msg lang-usage)" ;;
+    esac
 }
 
 # --- comandos ----------------------------------------------------------------
@@ -244,16 +332,16 @@ case $cmd in
         if [[ ${1:-} == --json ]]; then print_status_json; else print_status_text; fi
         ;;
     up | connect | --vpn-only)
-        name=$(resolve_connection) || die "No encontré ninguna conexión VPN en NetworkManager (mirá 'work-vpn list')"
-        nm connection up "$name" >/dev/null 2>&1 || die "No pude levantar '$name'"
-        notify "VPN conectada" "${name}"
-        printf 'VPN conectada (%s)\n' "$name"
+        name=$(resolve_connection) || die "$(msg no-vpn-nm)"
+        nm connection up "$name" >/dev/null 2>&1 || die "$(msg up-failed "$name")"
+        notify "$(msg vpn-on)" "$name"
+        msg vpn-up "$name"
         ;;
     down | disconnect | --down)
-        name=$(resolve_connection) || die "No encontré ninguna conexión VPN"
-        nm connection down "$name" >/dev/null 2>&1 || die "No pude bajar '$name'"
-        notify "VPN desconectada" "$name"
-        printf 'VPN desconectada (%s)\n' "$name"
+        name=$(resolve_connection) || die "$(msg no-vpn)"
+        nm connection down "$name" >/dev/null 2>&1 || die "$(msg down-failed "$name")"
+        notify "$(msg vpn-off)" "$name"
+        msg vpn-down "$name"
         ;;
     toggle)
         if name=$(active_vpn); then
@@ -264,15 +352,18 @@ case $cmd in
     list)
         vpn_connections
         ;;
+    lang)
+        lang_cmd "${1:-}"
+        ;;
     apps)
         if [[ ${1:-} == --json ]]; then print_apps_json; else app_ids; fi
         ;;
     open)
-        [[ -n ${1:-} ]] || die "Decime qué app: work-vpn open <id>"
+        [[ -n ${1:-} ]] || die "$(msg app-which)"
         app_open "$1"
         ;;
     --rdp) app_open remmina ;;
     --teams) app_open teams ;;
     -h | --help | help) usage ;;
-    *) die "No conozco '$cmd' (probá: work-vpn --help)" ;;
+    *) die "$(msg unknown-cmd "$cmd")" ;;
 esac

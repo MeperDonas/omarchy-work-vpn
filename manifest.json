@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "meperdonas.work-vpn",
   "name": "Work connection",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "Santiago Villabona (MeperDonas)",
   "license": "MIT",
   "description": "VPN, remote desktop and Teams for the workday, in one bar icon: state, tunnel IP and gateway, and the connect/disconnect/RDP/Teams actions.",
@@ -15,7 +15,7 @@
   },
   "barWidget": {
     "displayName": "Work connection",
-    "description": "VPN state (tunnel IP, gateway) plus connect, disconnect and the work apps you have installed, driven by a helper CLI. Ships with a NetworkManager helper, and works with any other helper you point it to.",
+    "description": "VPN state (tunnel IP, gateway) plus connect, disconnect and the work apps you have installed, driven by a helper CLI. Ships with a NetworkManager helper, and works with any other helper you point it to. English and Spanish, switched with a button in the panel header.",
     "category": "System",
     "aliases": [
       "work",
