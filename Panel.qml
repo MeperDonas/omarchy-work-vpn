@@ -50,6 +50,7 @@ Panel {
   // archivo que usa el helper, así la UI y la terminal nunca se contradicen:
   // se cambia con el botoncito del popup o con `work-vpn lang es`.
   property string lang: "en"
+  readonly property string langFile: Quickshell.env("HOME") + "/.config/work-vpn/lang"
 
   property bool connected: false
   // Apps que declara el helper (`apps --json`): id, etiqueta e ícono.
@@ -74,7 +75,10 @@ Panel {
   // mismo y se refresca el estado, que viene con su propio idioma.
   function toggleLang() {
     var next = root.lang === "en" ? "es" : "en"
-    bar.run(root.helper + " lang " + next)
+    // Escribe el archivo del widget y le avisa al helper (si no lo entiende, no
+    // pasa nada: el archivo ya quedó).
+    bar.run("mkdir -p \"$(dirname " + root.langFile + ")\" && printf %s " + next + " > " + root.langFile
+      + "; " + root.helper + " lang " + next + " >/dev/null 2>&1 || true")
     root.lang = next
     refresh()
   }
@@ -171,7 +175,10 @@ Panel {
   // no contesta —helper viejo— queda el inglés, que es el idioma de publicación.
   Process {
     id: langProbe
-    command: ["/bin/bash", "-lc", root.helper + " lang"]
+    // El archivo ~/.config/work-vpn/lang manda (lo escribe el botón): así el
+    // idioma funciona aunque el helper sea un script viejo que no lo entiende.
+    command: ["/bin/bash", "-lc",
+      "cat " + root.langFile + " 2>/dev/null || " + root.helper + " lang 2>/dev/null || echo en"]
     stdout: StdioCollector { id: langOutput }
     onExited: {
       var value = String(langOutput.text || "").trim()

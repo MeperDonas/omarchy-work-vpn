@@ -38,8 +38,13 @@ PY
 #    expone igual que el botón
 grep -q 'lang: "en"' Panel.qml && ok "el idioma por defecto es inglés" || bad "el idioma por defecto no es inglés"
 grep -qE "onTriggered: root\.toggleLang\(\)" Panel.qml && ok "hay un botón para alternar (no dropdown)" || bad "no hay botón que alterne el idioma"
-grep -qE 'langProbe' Panel.qml && grep -qE 'root\.helper \+ " lang"' Panel.qml \
-    && ok "el panel le pregunta el idioma al helper al arrancar" || bad "el panel no le pregunta el idioma al helper"
+# El idioma sale del archivo del widget (y del helper sólo como respaldo), así
+# funciona también con un helper viejo que no entiende "lang".
+grep -qE 'langProbe' Panel.qml && grep -qE 'cat .*langFile' Panel.qml \
+    && ok "el panel lee el idioma del archivo (con el helper de respaldo)" \
+    || bad "el panel no resuelve el idioma desde el archivo"
+grep -qE 'printf %s .*langFile' Panel.qml && ok "y el botón lo escribe ahí" \
+    || bad "el botón no escribe el archivo del idioma"
 grep -qE '^\s+lang\)' bin/work-vpn && ok "el helper expone el idioma (work-vpn lang)" || bad "el helper no expone el idioma"
 
 # 3) nada de textos de UI crudos fuera del diccionario
